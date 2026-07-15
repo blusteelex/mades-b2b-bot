@@ -133,6 +133,7 @@ async def product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{item['tag']}\n\n{item['description']}\n\n"
         f"<b>Опт:</b> {item['price']}\n"
         f"<b>Розміри:</b> {', '.join(item['sizes'])}\n"
+        f"<b>Мінімальне замовлення:</b> від {len(item['sizes'])} шт. (1 лінійка)\n"
         f"<b>Кольори:</b> {', '.join(item['colors'])}"
     )
     buttons = [[InlineKeyboardButton(color, callback_data=f"color:{product_id}:{i}")] for i, color in enumerate(item["colors"])]
@@ -153,23 +154,32 @@ async def choose_color(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, product_id, color_index = update.callback_query.data.split(":")
     item = find_product(product_id)
     context.user_data["selection"] = {"id": product_id, "color": item["colors"][int(color_index)]}
-    buttons = [[InlineKeyboardButton(size, callback_data=f"size:{product_id}:{size}") for size in item["sizes"]]]
+    buttons = [[InlineKeyboardButton(str(lines), callback_data=f"line:{product_id}:{lines}") for lines in range(1, 6)]]
     buttons.append([InlineKeyboardButton("← До картки", callback_data=f"product:{product_id}")])
-    await replace(update, f"<b>{item['title']}</b>\nКолір: <b>{context.user_data['selection']['color']}</b>\n\nОберіть розмір:", InlineKeyboardMarkup(buttons))
-
-
-async def choose_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _, product_id, size = update.callback_query.data.split(":")
-    context.user_data["selection"]["size"] = size
-    buttons = [[InlineKeyboardButton(str(qty), callback_data=f"qty:{product_id}:{qty}") for qty in range(1, 6)], [InlineKeyboardButton("← До картки", callback_data=f"product:{product_id}")]]
-    await replace(update, f"Розмір: <b>{size}</b>\n\nОберіть кількість:", InlineKeyboardMarkup(buttons))
+    await replace(
+        update,
+        f"<b>{item['title']}</b>\n"
+        f"Колір: <b>{context.user_data['selection']['color']}</b>\n\n"
+        f"<b>Скільки лінійок хочете замовити?</b>\n"
+        f"1 лінійка = {', '.join(item['sizes'])} ({len(item['sizes'])} шт.)",
+        InlineKeyboardMarkup(buttons),
+    )
 
 
 async def add_to_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _, product_id, qty = update.callback_query.data.split(":")
+    _, product_id, lines = update.callback_query.data.split(":")
     selection = context.user_data.get("selection", {})
     item = find_product(product_id)
-    entry = {"id": product_id, "title": item["title"], "price": item["price"], "color": selection.get("color"), "size": selection.get("size"), "qty": int(qty)}
+    line_count = int(lines)
+    entry = {
+        "id": product_id,
+        "title": item["title"],
+        "price": item["price"],
+        "color": selection.get("color"),
+        "sizes": item["sizes"],
+        "lines": line_count,
+        "pieces": line_count * len(item["sizes"]),
+    }
     context.user_data.setdefault("cart", []).append(entry)
     await replace(update, "✅ Позицію додано до заявки.", InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Продовжити вибір", callback_data="menu:catalog")],
@@ -177,12 +187,24 @@ async def add_to_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]))
 
 
+def line_word(count):
+    if count % 10 == 1 and count % 100 != 11:
+        return "лінійка"
+    if count % 10 in {2, 3, 4} and count % 100 not in {12, 13, 14}:
+        return "лінійки"
+    return "лінійок"
+
+
 def cart_text(cart):
     if not cart:
         return "<b>Моя заявка</b>\n\nУ заявці поки немає моделей."
     rows = ["<b>Моя заявка</b>\n"]
     for i, entry in enumerate(cart, 1):
-        rows.append(f"{i}. <b>{entry['title']}</b> ({entry['id']})\n   {entry['color']} · розмір {entry['size']} · {entry['qty']} шт. · {entry['price']}")
+        rows.append(
+            f"{i}. <b>{entry['title']}</b> ({entry['id']})\n"
+            f"   {entry['color']} · {entry['lines']} {line_word(entry['lines'])} · "
+            f"{', '.join(entry['sizes'])} · {entry['pieces']} шт. · {entry['price']}"
+        )
     rows.append("\nПеревірте позиції та надішліть заявку менеджеру.")
     return "\n".join(rows)
 
@@ -244,8 +266,7 @@ def create_application():
     app.add_handler(CallbackQueryHandler(browse, pattern="^(category|season|collection):"))
     app.add_handler(CallbackQueryHandler(product, pattern="^product:"))
     app.add_handler(CallbackQueryHandler(choose_color, pattern="^color:"))
-    app.add_handler(CallbackQueryHandler(choose_size, pattern="^size:"))
-    app.add_handler(CallbackQueryHandler(add_to_cart, pattern="^qty:"))
+    app.add_handler(CallbackQueryHandler(add_to_cart, pattern="^line:"))
     app.add_handler(CallbackQueryHandler(cart, pattern="^cart:view$"))
     app.add_handler(CallbackQueryHandler(clear_cart, pattern="^cart:clear$"))
     app.add_handler(CallbackQueryHandler(send_cart, pattern="^cart:send$"))
