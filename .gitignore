@@ -1,0 +1,4 @@
+.env
+.manager_chat_id
+.venv/
+__pycache__/

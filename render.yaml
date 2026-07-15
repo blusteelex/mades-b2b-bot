@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mades-b2b-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: MANAGER_USERNAME
+        value: bogdan_may
