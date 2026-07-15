@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-CATEGORY_NAMES = {"outerwear": "🧥 Верхняя одежда", "lightwear": "👚 Лёгкая одежда"}
+CATEGORY_NAMES = {"outerwear": "🧥 Верхній одяг", "lightwear": "👚 Легкий одяг"}
 
 
 def catalog():
@@ -49,9 +49,9 @@ def configured_manager_id():
 
 def main_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👗 Открыть каталог", callback_data="menu:catalog")],
-        [InlineKeyboardButton("✨ Новинки", callback_data="collection:Новинка"), InlineKeyboardButton("🔥 Хиты", callback_data="collection:Хит продаж")],
-        [InlineKeyboardButton("📦 В наличии", callback_data="collection:В наличии")],
+        [InlineKeyboardButton("👗 Відкрити каталог", callback_data="menu:catalog")],
+        [InlineKeyboardButton("✨ Новинки", callback_data="collection:Новинка"), InlineKeyboardButton("🔥 Хіти", callback_data="collection:Хіт продажів")],
+        [InlineKeyboardButton("📦 У наявності", callback_data="collection:У наявності")],
         [InlineKeyboardButton("🛒 Моя заявка", callback_data="cart:view"), InlineKeyboardButton("💬 Менеджер", callback_data="manager")],
     ])
 
@@ -70,7 +70,7 @@ async def safe_answer(query):
     try:
         await query.answer()
     except BadRequest as error:
-        logger.warning("Не удалось подтвердить нажатие кнопки: %s", error)
+        logger.warning("Не вдалося підтвердити натискання кнопки: %s", error)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -80,8 +80,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         MANAGER_ID_FILE.write_text(str(update.effective_user.id), encoding="utf-8")
         logger.info("Manager chat linked")
     text = (
-        "<b>Оптовая B2B-витрина</b>\n\n"
-        "Подберите модели, посмотрите размеры и цвета, затем отправьте нам одну готовую заявку."
+        "<b>Оптова B2B-вітрина</b>\n\n"
+        "Оберіть моделі, перегляньте розміри й кольори, а потім надішліть нам одну готову заявку."
     )
     await update.effective_message.reply_text(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
 
@@ -89,34 +89,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
         f"Ваш Telegram ID: <code>{update.effective_user.id}</code>\n"
-        "Скопируйте его в MANAGER_CHAT_ID в файле .env.",
+        "Скопіюйте його в MANAGER_CHAT_ID у файлі .env.",
         parse_mode=ParseMode.HTML,
     )
 
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await replace(update, "<b>Каталог</b>\nВыберите раздел:", InlineKeyboardMarkup([
-        [InlineKeyboardButton("🧥 Верхняя одежда", callback_data="category:outerwear")],
-        [InlineKeyboardButton("👚 Лёгкая одежда", callback_data="category:lightwear")],
-        [InlineKeyboardButton("🌸 Весна–лето", callback_data="season:summer"), InlineKeyboardButton("🍂 Демисезон", callback_data="season:demi")],
+    await replace(update, "<b>Каталог</b>\nОберіть розділ:", InlineKeyboardMarkup([
+        [InlineKeyboardButton("🧥 Верхній одяг", callback_data="category:outerwear")],
+        [InlineKeyboardButton("👚 Легкий одяг", callback_data="category:lightwear")],
+        [InlineKeyboardButton("🌸 Весна–літо", callback_data="season:summer"), InlineKeyboardButton("🍂 Демісезон", callback_data="season:demi")],
         [InlineKeyboardButton("❄️ Зима", callback_data="season:winter")],
-        [InlineKeyboardButton("← В меню", callback_data="home")],
+        [InlineKeyboardButton("← До меню", callback_data="home")],
     ]))
 
 
 async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, products, heading):
     if not products:
-        await replace(update, "В этом разделе пока нет моделей.", InlineKeyboardMarkup([[InlineKeyboardButton("← К каталогу", callback_data="menu:catalog")]]))
+        await replace(update, "У цьому розділі поки немає моделей.", InlineKeyboardMarkup([[InlineKeyboardButton("← До каталогу", callback_data="menu:catalog")]]))
         return
     buttons = [[InlineKeyboardButton(f"{p['title']} · {p['price']}", callback_data=f"product:{p['id']}")] for p in products]
-    buttons.append([InlineKeyboardButton("← К каталогу", callback_data="menu:catalog")])
-    await replace(update, f"<b>{heading}</b>\nВыберите модель:", InlineKeyboardMarkup(buttons))
+    buttons.append([InlineKeyboardButton("← До каталогу", callback_data="menu:catalog")])
+    await replace(update, f"<b>{heading}</b>\nОберіть модель:", InlineKeyboardMarkup(buttons))
 
 
 async def browse(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kind, value = update.callback_query.data.split(":", 1)
     products = [p for p in catalog() if p.get(kind) == value] if kind in {"category", "season"} else [p for p in catalog() if p.get("tag") == value]
-    title = CATEGORY_NAMES.get(value, {"summer": "🌸 Весна–лето", "demi": "🍂 Демисезон", "winter": "❄️ Зима"}.get(value, f"{value}"))
+    title = CATEGORY_NAMES.get(value, {"summer": "🌸 Весна–літо", "demi": "🍂 Демісезон", "winter": "❄️ Зима"}.get(value, f"{value}"))
     await show_products(update, context, products, title)
 
 
@@ -124,7 +124,7 @@ async def product(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product_id = update.callback_query.data.split(":", 1)[1]
     item = find_product(product_id)
     if not item:
-        await update.callback_query.answer("Модель не найдена. Обновите каталог.", show_alert=True)
+        await update.callback_query.answer("Модель не знайдена. Оновіть каталог.", show_alert=True)
         return
     context.user_data["current_product"] = product_id
     text = (
@@ -132,13 +132,13 @@ async def product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Артикул: <code>{item['id']}</code>\n"
         f"{item['tag']}\n\n{item['description']}\n\n"
         f"<b>Опт:</b> {item['price']}\n"
-        f"<b>Размеры:</b> {', '.join(item['sizes'])}\n"
-        f"<b>Цвета:</b> {', '.join(item['colors'])}"
+        f"<b>Розміри:</b> {', '.join(item['sizes'])}\n"
+        f"<b>Кольори:</b> {', '.join(item['colors'])}"
     )
     buttons = [[InlineKeyboardButton(color, callback_data=f"color:{product_id}:{i}")] for i, color in enumerate(item["colors"])]
-    buttons.append([InlineKeyboardButton("← К моделям", callback_data=f"category:{item['category']}")])
+    buttons.append([InlineKeyboardButton("← До моделей", callback_data=f"category:{item['category']}")])
     markup = InlineKeyboardMarkup(buttons)
-    card = text + "\n\n<b>Выберите цвет для заявки:</b>"
+    card = text + "\n\n<b>Оберіть колір для заявки:</b>"
     query = update.callback_query
     await safe_answer(query)
     photo_path = BASE_DIR / item.get("photo", "")
@@ -154,15 +154,15 @@ async def choose_color(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item = find_product(product_id)
     context.user_data["selection"] = {"id": product_id, "color": item["colors"][int(color_index)]}
     buttons = [[InlineKeyboardButton(size, callback_data=f"size:{product_id}:{size}") for size in item["sizes"]]]
-    buttons.append([InlineKeyboardButton("← К карточке", callback_data=f"product:{product_id}")])
-    await replace(update, f"<b>{item['title']}</b>\nЦвет: <b>{context.user_data['selection']['color']}</b>\n\nВыберите размер:", InlineKeyboardMarkup(buttons))
+    buttons.append([InlineKeyboardButton("← До картки", callback_data=f"product:{product_id}")])
+    await replace(update, f"<b>{item['title']}</b>\nКолір: <b>{context.user_data['selection']['color']}</b>\n\nОберіть розмір:", InlineKeyboardMarkup(buttons))
 
 
 async def choose_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, product_id, size = update.callback_query.data.split(":")
     context.user_data["selection"]["size"] = size
-    buttons = [[InlineKeyboardButton(str(qty), callback_data=f"qty:{product_id}:{qty}") for qty in range(1, 6)], [InlineKeyboardButton("← К карточке", callback_data=f"product:{product_id}")]]
-    await replace(update, f"Размер: <b>{size}</b>\n\nВыберите количество:", InlineKeyboardMarkup(buttons))
+    buttons = [[InlineKeyboardButton(str(qty), callback_data=f"qty:{product_id}:{qty}") for qty in range(1, 6)], [InlineKeyboardButton("← До картки", callback_data=f"product:{product_id}")]]
+    await replace(update, f"Розмір: <b>{size}</b>\n\nОберіть кількість:", InlineKeyboardMarkup(buttons))
 
 
 async def add_to_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,19 +171,19 @@ async def add_to_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item = find_product(product_id)
     entry = {"id": product_id, "title": item["title"], "price": item["price"], "color": selection.get("color"), "size": selection.get("size"), "qty": int(qty)}
     context.user_data.setdefault("cart", []).append(entry)
-    await replace(update, "✅ Позиция добавлена в заявку.", InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Продолжить выбор", callback_data="menu:catalog")],
-        [InlineKeyboardButton("🛒 Посмотреть заявку", callback_data="cart:view")],
+    await replace(update, "✅ Позицію додано до заявки.", InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Продовжити вибір", callback_data="menu:catalog")],
+        [InlineKeyboardButton("🛒 Переглянути заявку", callback_data="cart:view")],
     ]))
 
 
 def cart_text(cart):
     if not cart:
-        return "<b>Моя заявка</b>\n\nПока в заявке нет моделей."
+        return "<b>Моя заявка</b>\n\nУ заявці поки немає моделей."
     rows = ["<b>Моя заявка</b>\n"]
     for i, entry in enumerate(cart, 1):
-        rows.append(f"{i}. <b>{entry['title']}</b> ({entry['id']})\n   {entry['color']} · размер {entry['size']} · {entry['qty']} шт. · {entry['price']}")
-    rows.append("\nПроверьте позиции и отправьте заявку менеджеру.")
+        rows.append(f"{i}. <b>{entry['title']}</b> ({entry['id']})\n   {entry['color']} · розмір {entry['size']} · {entry['qty']} шт. · {entry['price']}")
+    rows.append("\nПеревірте позиції та надішліть заявку менеджеру.")
     return "\n".join(rows)
 
 
@@ -191,9 +191,9 @@ async def cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     items = context.user_data.setdefault("cart", [])
     buttons = []
     if items:
-        buttons.append([InlineKeyboardButton("✅ Отправить заявку", callback_data="cart:send")])
-        buttons.append([InlineKeyboardButton("🗑 Очистить", callback_data="cart:clear")])
-    buttons.append([InlineKeyboardButton("← В меню", callback_data="home")])
+        buttons.append([InlineKeyboardButton("✅ Надіслати заявку", callback_data="cart:send")])
+        buttons.append([InlineKeyboardButton("🗑 Очистити", callback_data="cart:clear")])
+    buttons.append([InlineKeyboardButton("← До меню", callback_data="home")])
     await replace(update, cart_text(items), InlineKeyboardMarkup(buttons))
 
 
@@ -205,34 +205,34 @@ async def clear_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     items = context.user_data.get("cart", [])
     if not items:
-        await update.callback_query.answer("Заявка пока пуста.", show_alert=True)
+        await update.callback_query.answer("Заявка поки порожня.", show_alert=True)
         return
     user = update.effective_user
-    request = "<b>🛒 Новая B2B-заявка</b>\n\n" + cart_text(items) + f"\n\n<b>Клиент:</b> {user.full_name}\n<b>Telegram:</b> @{user.username or 'не указан'}\n<b>ID:</b> <code>{user.id}</code>"
+    request = "<b>🛒 Нова B2B-заявка</b>\n\n" + cart_text(items) + f"\n\n<b>Клієнт:</b> {user.full_name}\n<b>Telegram:</b> @{user.username or 'не вказано'}\n<b>ID:</b> <code>{user.id}</code>"
     manager_chat_id = configured_manager_id()
     if not manager_chat_id or manager_chat_id == "123456789":
         logger.warning("MANAGER_CHAT_ID is not configured")
-        await replace(update, "Заявка собрана, но менеджер ещё не подключён. Пожалуйста, напишите нам в личные сообщения.", main_menu())
+        await replace(update, "Заявку сформовано, але менеджера ще не підключено. Будь ласка, напишіть нам у приватні повідомлення.", main_menu())
         return
     await context.bot.send_message(chat_id=manager_chat_id, text=request, parse_mode=ParseMode.HTML)
     context.user_data["cart"] = []
-    await replace(update, "✅ Заявка отправлена менеджеру. Мы скоро свяжемся с вами для подтверждения наличия и оплаты.", main_menu())
+    await replace(update, "✅ Заявку надіслано менеджеру. Незабаром ми зв’яжемося з вами для підтвердження наявності й оплати.", main_menu())
 
 
 async def manager(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = []
     if MANAGER_USERNAME:
-        buttons.append([InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{MANAGER_USERNAME.lstrip('@')}")])
-    buttons.append([InlineKeyboardButton("← В меню", callback_data="home")])
-    await replace(update, "Уточнить наличие, сроки и условия сотрудничества можно напрямую у менеджера.", InlineKeyboardMarkup(buttons))
+        buttons.append([InlineKeyboardButton("💬 Написати менеджеру", url=f"https://t.me/{MANAGER_USERNAME.lstrip('@')}")])
+    buttons.append([InlineKeyboardButton("← До меню", callback_data="home")])
+    await replace(update, "Уточнити наявність, терміни й умови співпраці можна безпосередньо у менеджера.", InlineKeyboardMarkup(buttons))
 
 
 async def home(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await replace(update, "<b>Оптовая B2B-витрина</b>\n\nВыберите нужный раздел:", main_menu())
+    await replace(update, "<b>Оптова B2B-вітрина</b>\n\nОберіть потрібний розділ:", main_menu())
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.exception("Ошибка обработки обновления", exc_info=context.error)
+    logger.exception("Помилка обробки оновлення", exc_info=context.error)
 
 
 def create_application():
@@ -256,7 +256,7 @@ def create_application():
 
 def main():
     if not TOKEN or TOKEN == "PASTE_NEW_TOKEN_HERE":
-        raise RuntimeError("Создайте .env по примеру .env.example и укажите BOT_TOKEN.")
+        raise RuntimeError("Створіть .env за прикладом .env.example та вкажіть BOT_TOKEN.")
     while True:
         # Python 3.14 no longer creates a default event loop automatically.
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -268,7 +268,7 @@ def main():
             app.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None)
             return
         except NetworkError:
-            logger.exception("Связь с Telegram потеряна. Новая попытка через 10 секунд.")
+            logger.exception("Зв’язок із Telegram втрачено. Нова спроба через 10 секунд.")
             time.sleep(10)
 
 
