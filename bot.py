@@ -263,7 +263,9 @@ def main():
         app = create_application()
         try:
             logger.info("Bot is running")
-            app.run_polling(allowed_updates=Update.ALL_TYPES)
+            # This runs inside Flask's background thread on Render, where
+            # signal handlers are not permitted.
+            app.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None)
             return
         except NetworkError:
             logger.exception("Связь с Telegram потеряна. Новая попытка через 10 секунд.")
