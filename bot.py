@@ -230,13 +230,21 @@ async def send_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer("Заявка поки порожня.", show_alert=True)
         return
     user = update.effective_user
-    request = "<b>🛒 Нова B2B-заявка</b>\n\n" + cart_text(items) + f"\n\n<b>Клієнт:</b> {user.full_name}\n<b>Telegram:</b> @{user.username or 'не вказано'}\n<b>ID:</b> <code>{user.id}</code>"
+    username = f"@{user.username}" if user.username else "немає username"
+    request = "<b>🛒 Нова B2B-заявка</b>\n\n" + cart_text(items) + f"\n\n<b>Клієнт:</b> {user.full_name}\n<b>Telegram:</b> {username}\n<b>ID:</b> <code>{user.id}</code>"
     manager_chat_id = configured_manager_id()
     if not manager_chat_id or manager_chat_id == "123456789":
         logger.warning("MANAGER_CHAT_ID is not configured")
         await replace(update, "Заявку сформовано, але менеджера ще не підключено. Будь ласка, напишіть нам у приватні повідомлення.", main_menu())
         return
-    await context.bot.send_message(chat_id=manager_chat_id, text=request, parse_mode=ParseMode.HTML)
+    await context.bot.send_message(
+        chat_id=manager_chat_id,
+        text=request,
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💬 Написати клієнту", url=f"tg://user?id={user.id}")],
+        ]),
+    )
     context.user_data["cart"] = []
     await replace(update, "✅ Заявку надіслано менеджеру. Незабаром ми зв’яжемося з вами для підтвердження наявності й оплати.", main_menu())
 
