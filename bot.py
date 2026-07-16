@@ -6,10 +6,18 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, NetworkError
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -329,13 +337,64 @@ async def send_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not items:
         await update.callback_query.answer("Заявка поки порожня.", show_alert=True)
         return
+    context.user_data["awaiting_contact"] = True
+    await safe_answer(update.callback_query)
+    await update.callback_query.message.reply_text(
+        "<b>Ще один крок</b>\n\n"
+        "Щоб менеджер міг одразу зв’язатися з вами щодо заявки, "
+        "натисніть кнопку нижче та поділіться номером телефону.",
+        reply_markup=ReplyKeyboardMarkup(
+            [[KeyboardButton("📱 Поділитися контактом", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def receive_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("awaiting_contact"):
+        return
+    user = update.effective_user
+    contact = update.effective_message.contact
+    if contact.user_id and contact.user_id != user.id:
+        await update.effective_message.reply_text(
+            "Будь ласка, надішліть свій власний контакт.",
+            reply_markup=ReplyKeyboardMarkup(
+                [[KeyboardButton("📱 Поділитися контактом", request_contact=True)]],
+                resize_keyboard=True,
+                one_time_keyboard=True,
+            ),
+        )
+        return
+
+    items = context.user_data.get("cart", [])
+    if not items:
+        context.user_data["awaiting_contact"] = False
+        await update.effective_message.reply_text(
+            "Заявка поки порожня.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
     user = update.effective_user
     username = f"@{user.username}" if user.username else "немає username"
-    request = "<b>🛒 Нова B2B-заявка</b>\n\n" + cart_text(items) + f"\n\n<b>Клієнт:</b> {user.full_name}\n<b>Telegram:</b> {username}\n<b>ID:</b> <code>{user.id}</code>"
+    request = (
+        "<b>🛒 Нова B2B-заявка</b>\n\n"
+        + cart_text(items)
+        + f"\n\n<b>Клієнт:</b> {user.full_name}"
+        + f"\n<b>Телефон:</b> {contact.phone_number}"
+        + f"\n<b>Telegram:</b> {username}"
+        + f"\n<b>ID:</b> <code>{user.id}</code>"
+    )
     manager_chat_id = configured_manager_id()
     if not manager_chat_id or manager_chat_id == "123456789":
         logger.warning("MANAGER_CHAT_ID is not configured")
-        await replace(update, "Заявку сформовано, але менеджера ще не підключено. Будь ласка, напишіть нам у приватні повідомлення.", main_menu())
+        context.user_data["awaiting_contact"] = False
+        await update.effective_message.reply_text(
+            "Заявку сформовано, але менеджера ще не підключено. Будь ласка, напишіть нам у приватні повідомлення.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
         return
     await context.bot.send_message(
         chat_id=manager_chat_id,
@@ -346,7 +405,11 @@ async def send_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]),
     )
     context.user_data["cart"] = []
-    await replace(update, "✅ Заявку надіслано менеджеру. Незабаром ми зв’яжемося з вами для підтвердження наявності й оплати.", main_menu())
+    context.user_data["awaiting_contact"] = False
+    await update.effective_message.reply_text(
+        "✅ Заявку надіслано менеджеру. Незабаром ми зв’яжемося з вами для підтвердження наявності й оплати.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
 
 
 async def manager(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,6 +444,7 @@ def create_application():
     app.add_handler(CallbackQueryHandler(clear_cart, pattern="^cart:clear$"))
     app.add_handler(CallbackQueryHandler(send_cart, pattern="^cart:send$"))
     app.add_handler(CallbackQueryHandler(manager, pattern="^manager$"))
+    app.add_handler(MessageHandler(filters.CONTACT, receive_contact))
     app.add_error_handler(on_error)
     return app
 
