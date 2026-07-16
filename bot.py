@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
@@ -37,6 +37,17 @@ def catalog():
 
 def find_product(product_id):
     return next((item for item in catalog() if item["id"] == product_id), None)
+
+
+def product_photo_path(item):
+    """Find a product image in the catalog photo folder or next to the bot."""
+    filename = item.get("photo", "")
+    if not filename:
+        return None
+    for path in (BASE_DIR / "photos" / filename, BASE_DIR / filename):
+        if path.is_file():
+            return path
+    return None
 
 
 def configured_manager_id():
@@ -108,9 +119,90 @@ async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
     if not products:
         await replace(update, "У цьому розділі поки немає моделей.", InlineKeyboardMarkup([[InlineKeyboardButton("← До каталогу", callback_data="menu:catalog")]]))
         return
-    buttons = [[InlineKeyboardButton(f"{p['title']} · {p['price']}", callback_data=f"product:{p['id']}")] for p in products]
+    context.user_data["browse_product_ids"] = [item["id"] for item in products]
+    context.user_data["browse_heading"] = heading
+    await show_product_card(update, context, products, 0, heading)
+
+
+def product_card_markup(item, index, total):
+    buttons = []
+    navigation = []
+    if index > 0:
+        navigation.append(InlineKeyboardButton("←", callback_data=f"browsepage:{index - 1}"))
+    navigation.append(InlineKeyboardButton(f"{index + 1} / {total}", callback_data="noop"))
+    if index < total - 1:
+        navigation.append(InlineKeyboardButton("→", callback_data=f"browsepage:{index + 1}"))
+    buttons.append(navigation)
+    buttons.append([InlineKeyboardButton("🛍 Обрати цю модель", callback_data=f"product:{item['id']}")])
     buttons.append([InlineKeyboardButton("← До каталогу", callback_data="menu:catalog")])
-    await replace(update, f"<b>{heading}</b>\nОберіть модель:", InlineKeyboardMarkup(buttons))
+    return InlineKeyboardMarkup(buttons)
+
+
+def product_card_caption(item, heading, index, total):
+    return (
+        f"<b>{heading}</b>\n\n"
+        f"<b>{item['title']}</b>\n"
+        f"Артикул: <code>{item['id']}</code> · {item.get('tag', '')}\n\n"
+        f"<b>Оптова ціна:</b> {item['price']}\n"
+        f"<b>Розміри в лінійці:</b> {', '.join(item['sizes'])}\n"
+        f"<b>Кольори:</b> {', '.join(item['colors'])}\n\n"
+        f"Модель {index + 1} із {total}. Оберіть її або перегляньте наступну."
+    )
+
+
+async def show_product_card(update: Update, context: ContextTypes.DEFAULT_TYPE, products, index, heading):
+    item = products[index]
+    context.user_data["browse_index"] = index
+    caption = product_card_caption(item, heading, index, len(products))
+    markup = product_card_markup(item, index, len(products))
+    query = update.callback_query
+    await safe_answer(query)
+    photo_path = product_photo_path(item)
+
+    if photo_path and query.message.photo:
+        with photo_path.open("rb") as photo:
+            await query.edit_message_media(
+                media=InputMediaPhoto(media=photo, caption=caption, parse_mode=ParseMode.HTML),
+                reply_markup=markup,
+            )
+        return
+
+    if photo_path:
+        with photo_path.open("rb") as photo:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo,
+                caption=caption,
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML,
+            )
+        await query.message.delete()
+        return
+
+    await query.edit_message_text(
+        caption + "\n\n<i>Фото цієї моделі ще додається.</i>",
+        reply_markup=markup,
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def browse_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        index = int(update.callback_query.data.split(":", 1)[1])
+        ids = context.user_data["browse_product_ids"]
+        products = [find_product(product_id) for product_id in ids]
+        products = [item for item in products if item]
+        heading = context.user_data["browse_heading"]
+        if not products or index < 0 or index >= len(products):
+            raise ValueError
+    except (KeyError, ValueError):
+        await update.callback_query.answer("Каталог оновлено. Відкрийте розділ ще раз.", show_alert=True)
+        return
+    await show_product_card(update, context, products, index, heading)
+
+
+async def noop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await safe_answer(update.callback_query)
 
 
 async def browse(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,13 +229,21 @@ async def product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<b>Кольори:</b> {', '.join(item['colors'])}"
     )
     buttons = [[InlineKeyboardButton(color, callback_data=f"color:{product_id}:{i}")] for i, color in enumerate(item["colors"])]
-    buttons.append([InlineKeyboardButton("← До моделей", callback_data=f"category:{item['category']}")])
+    browse_ids = context.user_data.get("browse_product_ids", [])
+    if product_id in browse_ids:
+        back_callback = f"browsepage:{context.user_data.get('browse_index', 0)}"
+    else:
+        back_callback = f"category:{item['category']}"
+    buttons.append([InlineKeyboardButton("← До моделей", callback_data=back_callback)])
     markup = InlineKeyboardMarkup(buttons)
     card = text + "\n\n<b>Оберіть колір для заявки:</b>"
     query = update.callback_query
     await safe_answer(query)
-    photo_path = BASE_DIR / item.get("photo", "")
-    if item.get("photo") and photo_path.is_file():
+    photo_path = product_photo_path(item)
+    if photo_path:
+        if query.message.photo:
+            await query.edit_message_caption(card, reply_markup=markup, parse_mode=ParseMode.HTML)
+            return
         with photo_path.open("rb") as photo:
             await query.message.reply_photo(photo=photo, caption=card, reply_markup=markup, parse_mode=ParseMode.HTML)
     else:
@@ -272,6 +372,8 @@ def create_application():
     app.add_handler(CallbackQueryHandler(home, pattern="^home$"))
     app.add_handler(CallbackQueryHandler(menu, pattern="^menu:catalog$"))
     app.add_handler(CallbackQueryHandler(browse, pattern="^(category|season|collection):"))
+    app.add_handler(CallbackQueryHandler(browse_page, pattern="^browsepage:"))
+    app.add_handler(CallbackQueryHandler(noop, pattern="^noop$"))
     app.add_handler(CallbackQueryHandler(product, pattern="^product:"))
     app.add_handler(CallbackQueryHandler(choose_color, pattern="^color:"))
     app.add_handler(CallbackQueryHandler(add_to_cart, pattern="^line:"))
